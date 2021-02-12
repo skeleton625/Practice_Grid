@@ -3,7 +3,7 @@ using UnityEngine;
 
 public class GridXZ<GridObject>
 {
-    public event EventHandler<OnGridValueChangedEventArgs> OnValueChangedEvent = null;
+    public event EventHandler<OnGridValueChangedEventArgs> OnGridObjectChanged = null;
     public class OnGridValueChangedEventArgs : EventArgs
     {
         public int x;
@@ -30,9 +30,9 @@ public class GridXZ<GridObject>
         Vector3 worldPosition;
         Vector3 textPlusPosition = new Vector3(cellSize / 2, 0, cellSize / 2);
         var debugTextArray = new TextMesh[width, height];
-        for(int x = 0; x < width; x++)
+        for (int x = 0; x < width; x++)
         {
-            for(int z =0; z < height; z++)
+            for (int z = 0; z < height; z++)
             {
                 gridArray[x, z] = createGridObject(this, x, z);
                 worldPosition = GetWorldPosition(x, z);
@@ -45,7 +45,7 @@ public class GridXZ<GridObject>
         Debug.DrawLine(GetWorldPosition(0, height), worldPosition, Color.white, 100f);
         Debug.DrawLine(GetWorldPosition(width, 0), worldPosition, Color.white, 100f);
 
-        OnValueChangedEvent += (object sender, OnGridValueChangedEventArgs eventArgs) =>
+        OnGridObjectChanged += (object sender, OnGridValueChangedEventArgs eventArgs) =>
         { debugTextArray[eventArgs.x, eventArgs.z].text = gridArray[eventArgs.x, eventArgs.z].ToString(); };
     }
 
@@ -63,8 +63,36 @@ public class GridXZ<GridObject>
         return textMesh;
     }
 
-    private Vector3 GetWorldPosition(int x, int z)
+    public GridObject GetGridObject(int x, int z)
+    {
+        if (x >= 0 && z >= 0 && x < width && z < height)
+        {
+            return gridArray[x, z];
+        }
+        else
+        {
+            return default;
+        }
+    }
+
+    public void GetIntPosition(Vector3 worldPosition, out int x, out int z)
+    {
+        x = Mathf.FloorToInt(worldPosition.x / cellSize);
+        z = Mathf.FloorToInt(worldPosition.z / cellSize);
+    }
+
+    public Vector3 GetWorldPosition(int x, int z)
     {
         return new Vector3(x, 0, z) * cellSize + center;
+    }
+
+    /* Activate OnGridObjectChange EventHandler -> text change */
+    public void TriggerGridObjectChanged(int x, int z)
+    {
+        /*
+         *  if (OnGridObjectChanged != null)
+         *      OnGridObjectChanged(this, new OnGridValueChangedEventArgs { x = x, z = z });
+         */
+        OnGridObjectChanged.Invoke(this, new OnGridValueChangedEventArgs { x = x, z = z });
     }
 }

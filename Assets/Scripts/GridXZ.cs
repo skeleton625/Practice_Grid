@@ -63,6 +63,11 @@ public class GridXZ<GridObject>
         return textMesh;
     }
 
+    public float GetCellSize()
+    {
+        return cellSize;
+    }
+
     public GridObject GetGridObject(int x, int z)
     {
         if (x >= 0 && z >= 0 && x < width && z < height)
@@ -71,7 +76,7 @@ public class GridXZ<GridObject>
         }
         else
         {
-            return default;
+            return default(GridObject);
         }
     }
 

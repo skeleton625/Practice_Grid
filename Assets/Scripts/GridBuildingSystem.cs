@@ -8,16 +8,20 @@ public class GridBuildingSystem : MonoBehaviour
     [SerializeField] private int Height = 0;
     [SerializeField] private float CellSize = 0f;
     [SerializeField] private Transform StartTransform = null;
-    [SerializeField] private BuildingData buildData = null;
+    [SerializeField] private List<BuildingData> buildDataList = null;
 
+    private Dir dir = default;
     private Camera mainCamera = null;
     private GridXZ<GridObject> grid = null;
+    private BuildingData preBuildingData = null;
 
     private void Awake()
     {
         mainCamera = Camera.main;
         grid = new GridXZ<GridObject>(StartTransform, Width, Height, CellSize, StartTransform.position, 
                                       (GridXZ<GridObject> g, int x, int z) => new GridObject(g, x, z));
+
+        preBuildingData = buildDataList[0];
     }
 
     private void Update()
@@ -28,14 +32,14 @@ public class GridBuildingSystem : MonoBehaviour
             if(Physics.Raycast(cameraRay.origin, cameraRay.direction, out RaycastHit hit, 1000f))
             {
                 grid.GetIntPosition(hit.point - StartTransform.position, out int x, out int z);
-
-                var gridPositionList = buildData.GetGridPositinoList(new Vector2Int(x, z), BuildingData.Dir.Forward);
+                var gridPosition = new Vector2Int(x, z);
                 var gridObjectList = new List<GridObject>();
+                var gridPositionList = preBuildingData.GetGridPositinoList(gridPosition, dir);
 
-                foreach(var position in gridPositionList)
+                foreach (var position in gridPositionList)
                 {
                     var gridObject = grid.GetGridObject(position.x, position.y);
-                    if (!gridObject.CanBuild())
+                    if (gridObject == null || !gridObject.CanBuild())
                     {
                         Debug.Log(string.Format("Cannot build here ! : {0}", hit.point));
                         return;
@@ -43,11 +47,48 @@ public class GridBuildingSystem : MonoBehaviour
                     gridObjectList.Add(gridObject);
                 }
 
-                var buildTransform = Instantiate(buildData.prefab, grid.GetWorldPosition(x, z), Quaternion.identity);
+                var rotationOffset = BuildingData.GetRotationOffset(dir);
+                var objectPosition = grid.GetWorldPosition(x, z) + new Vector3(rotationOffset.x, 0, rotationOffset.y) * grid.GetCellSize();
+                var buildingEntity = BuildingEntity.Create(objectPosition, gridPosition, dir, preBuildingData);
+
                 foreach(var gridObject in gridObjectList)
-                    gridObject.SetTransform(buildTransform);
+                    gridObject.SetBuildingEntity(buildingEntity);
             }
         }
+
+        if(Input.GetMouseButtonDown(2))
+        {
+            var cameraRay = mainCamera.ScreenPointToRay(Input.mousePosition);
+            if(Physics.Raycast(cameraRay.origin, cameraRay.direction, out RaycastHit hit, 1000f))
+            {
+                grid.GetIntPosition(hit.point - StartTransform.position, out int x, out int z);
+                var gridObject = grid.GetGridObject(x, z);
+                var buildingEntity = gridObject.GetBuildingEntity();
+                if (buildingEntity != null)
+                {
+                    var gridPositionList = buildingEntity.GetGridPositionList();
+                    buildingEntity.DestroySelf();
+
+                    foreach(var position in gridPositionList)
+                    {
+                        gridObject = grid.GetGridObject(position.x, position.y);
+                        if (gridObject != null)
+                            gridObject.ClearBuildingEntity();
+                    }
+
+                }
+            }
+        }
+
+        if(Input.GetKeyDown(KeyCode.R))
+        {
+            dir = BuildingData.GetNextDir(dir);
+            Debug.Log(dir);
+        }
+
+        if (Input.GetKeyDown(KeyCode.Alpha1)) preBuildingData = buildDataList[0];
+        if (Input.GetKeyDown(KeyCode.Alpha2)) preBuildingData = buildDataList[1];
+        if (Input.GetKeyDown(KeyCode.Alpha3)) preBuildingData = buildDataList[2];
     }
 
     public class GridObject
@@ -55,7 +96,7 @@ public class GridBuildingSystem : MonoBehaviour
         private GridXZ<GridObject> grid;
         private int x;
         private int z;
-        private Transform transform;
+        private BuildingEntity buildingEntity = null;
 
         public GridObject(GridXZ<GridObject> grid, int x, int z)
         {
@@ -64,26 +105,33 @@ public class GridBuildingSystem : MonoBehaviour
             this.z = z;
         }
 
-        public void SetTransform(Transform transform)
+        public void SetBuildingEntity(BuildingEntity buildingEntity)
         {
-            this.transform = transform;
+            this.buildingEntity = buildingEntity;
             grid.TriggerGridObjectChanged(x, z);
         }
 
-        public void ClearTransform()
+        public BuildingEntity GetBuildingEntity()
         {
-            transform = null;
+            if (buildingEntity != null)
+                return buildingEntity;
+            return null;
+        }
+
+        public void ClearBuildingEntity()
+        {
+            buildingEntity = null;
             grid.TriggerGridObjectChanged(x, z);
         }
 
         public bool CanBuild()
         {
-            return transform == null;
+            return buildingEntity == null;
         }
 
         public override string ToString()
         {
-            return string.Format("{0}, {1}, {2}", x, z, transform);
+            return string.Format("{0}, {1}, {2}", x, z, buildingEntity != null);
         }
     }
 }

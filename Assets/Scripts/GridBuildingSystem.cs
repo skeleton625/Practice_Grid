@@ -1,4 +1,4 @@
-﻿using System.Collections;
+﻿using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -6,77 +6,72 @@ public class GridBuildingSystem : MonoBehaviour
 {
     [SerializeField] private int Width = 0;
     [SerializeField] private int Height = 0;
-    [SerializeField] private float CellSize = 0f;
+    [SerializeField] private int CellSize = 0;
     [SerializeField] private Transform StartTransform = null;
-    [SerializeField] private List<BuildingData> buildDataList = null;
+    [SerializeField] private List<BuildingData> BuildDataList = null;
 
     private Dir dir = default;
-    private Camera mainCamera = null;
     private GridXZ<GridObject> grid = null;
-    private BuildingData preBuildingData = null;
+    private BuildingData selectedBuildingData = null;
+
+    public event EventHandler OnSelectedChanged = null;
+    public static GridBuildingSystem Instance { get; private set; }
 
     private void Awake()
     {
-        mainCamera = Camera.main;
+        Instance = this;
+        UtilClass.InitializeUtilClass();
         grid = new GridXZ<GridObject>(StartTransform, Width, Height, CellSize, StartTransform.position, 
                                       (GridXZ<GridObject> g, int x, int z) => new GridObject(g, x, z));
-
-        preBuildingData = buildDataList[0];
     }
 
     private void Update()
     {
-        if(Input.GetMouseButtonDown(0))
+        if(Input.GetMouseButtonDown(0) && selectedBuildingData != null)
         {
-            var cameraRay = mainCamera.ScreenPointToRay(Input.mousePosition);
-            if(Physics.Raycast(cameraRay.origin, cameraRay.direction, out RaycastHit hit, 1000f))
+            var gridPosition = GetMouseGridPosition();
+            var gridObjectList = new List<GridObject>();
+            var gridPositionList = selectedBuildingData.GetGridPositinoList(gridPosition, dir);
+
+            foreach (var position in gridPositionList)
             {
-                grid.GetIntPosition(hit.point - StartTransform.position, out int x, out int z);
-                var gridPosition = new Vector2Int(x, z);
-                var gridObjectList = new List<GridObject>();
-                var gridPositionList = preBuildingData.GetGridPositinoList(gridPosition, dir);
-
-                foreach (var position in gridPositionList)
+                var gridObject = grid.GetGridObject(position);
+                if (gridObject == null || !gridObject.CanBuild())
                 {
-                    var gridObject = grid.GetGridObject(position.x, position.y);
-                    if (gridObject == null || !gridObject.CanBuild())
-                    {
-                        Debug.Log(string.Format("Cannot build here ! : {0}", hit.point));
-                        return;
-                    }
-                    gridObjectList.Add(gridObject);
+                    Debug.Log(string.Format("Cannot build here ! : {0}", gridPosition));
+                    return;
                 }
-
-                var rotationOffset = BuildingData.GetRotationOffset(dir);
-                var objectPosition = grid.GetWorldPosition(x, z) + new Vector3(rotationOffset.x, 0, rotationOffset.y) * grid.GetCellSize();
-                var buildingEntity = BuildingEntity.Create(objectPosition, gridPosition, dir, preBuildingData);
-
-                foreach(var gridObject in gridObjectList)
-                    gridObject.SetBuildingEntity(buildingEntity);
+                gridObjectList.Add(gridObject);
             }
+
+            var worldPosition = grid.GetWorldPosition(gridPosition, BuildingData.GetRotationOffset(dir));
+            var buildingEntity = BuildingEntity.Create(worldPosition, gridPosition, dir, selectedBuildingData);
+
+            foreach (var gridObject in gridObjectList)
+                gridObject.SetBuildingEntity(buildingEntity);
+        }
+
+        if(Input.GetMouseButtonDown(1) && selectedBuildingData != null)
+        {
+            DeselectBuildingData();
         }
 
         if(Input.GetMouseButtonDown(2))
         {
-            var cameraRay = mainCamera.ScreenPointToRay(Input.mousePosition);
-            if(Physics.Raycast(cameraRay.origin, cameraRay.direction, out RaycastHit hit, 1000f))
+            var gridObject = grid.GetGridObject(GetMouseGridPosition());
+            var buildingEntity = gridObject.GetBuildingEntity();
+            if (buildingEntity != null)
             {
-                grid.GetIntPosition(hit.point - StartTransform.position, out int x, out int z);
-                var gridObject = grid.GetGridObject(x, z);
-                var buildingEntity = gridObject.GetBuildingEntity();
-                if (buildingEntity != null)
+                var gridPositionList = buildingEntity.GetGridPositionList();
+                buildingEntity.DestroySelf();
+
+                foreach (var position in gridPositionList)
                 {
-                    var gridPositionList = buildingEntity.GetGridPositionList();
-                    buildingEntity.DestroySelf();
-
-                    foreach(var position in gridPositionList)
-                    {
-                        gridObject = grid.GetGridObject(position.x, position.y);
-                        if (gridObject != null)
-                            gridObject.ClearBuildingEntity();
-                    }
-
+                    gridObject = grid.GetGridObject(position);
+                    if (gridObject != null)
+                        gridObject.ClearBuildingEntity();
                 }
+
             }
         }
 
@@ -86,9 +81,49 @@ public class GridBuildingSystem : MonoBehaviour
             Debug.Log(dir);
         }
 
-        if (Input.GetKeyDown(KeyCode.Alpha1)) preBuildingData = buildDataList[0];
-        if (Input.GetKeyDown(KeyCode.Alpha2)) preBuildingData = buildDataList[1];
-        if (Input.GetKeyDown(KeyCode.Alpha3)) preBuildingData = buildDataList[2];
+        if (Input.GetKeyDown(KeyCode.Alpha0)) { DeselectBuildingData(); }
+        if (Input.GetKeyDown(KeyCode.Alpha1)) { selectedBuildingData = BuildDataList[0]; RefreshSelectedBulidingData(); }
+        if (Input.GetKeyDown(KeyCode.Alpha2)) { selectedBuildingData = BuildDataList[1]; RefreshSelectedBulidingData(); }
+        if (Input.GetKeyDown(KeyCode.Alpha3)) { selectedBuildingData = BuildDataList[2]; RefreshSelectedBulidingData(); }
+    }
+
+    public BuildingData GetSelectedBuildingData()
+    {
+        return selectedBuildingData;
+    }
+
+    public Vector3 GetMouseGridSnappedPosition()
+    {
+        var mousePosition = UtilClass.RaycastCamera();
+        if (selectedBuildingData != null)
+        {
+            var rotationOffset = BuildingData.GetRotationOffset(dir);
+            return grid.GetWorldPosition(grid.GetIntPosition(mousePosition), rotationOffset);
+        }
+        return mousePosition;
+    }
+
+    public Quaternion GetBulidingEntityRotation()
+    {
+        if (selectedBuildingData != null)
+            return Quaternion.Euler(0, BuildingData.GetRotationAngle(dir), 0);
+        else
+            return Quaternion.identity;
+    }
+
+    private Vector2Int GetMouseGridPosition()
+    {
+        return grid.GetIntPosition(UtilClass.RaycastCamera());
+    }
+
+    private void RefreshSelectedBulidingData()
+    {
+        OnSelectedChanged.Invoke(this, EventArgs.Empty);
+    }
+
+    private void DeselectBuildingData()
+    {
+        selectedBuildingData = null; RefreshSelectedBulidingData();
     }
 
     public class GridObject

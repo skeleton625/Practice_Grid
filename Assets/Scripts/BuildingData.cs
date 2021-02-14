@@ -45,6 +45,7 @@ public class BuildingData : ScriptableObject
 
     public string BuildingName = null;
     public Transform prefab = null;
+    public Transform visual = null;
     public int width = 0;
     public int height = 0;
 

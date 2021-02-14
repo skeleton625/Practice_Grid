@@ -12,12 +12,12 @@ public class GridXZ<GridObject>
 
     private int width = 0;
     private int height = 0;
-    private float cellSize = 0;
+    private int cellSize = 0;
     private Vector3 center = Vector3.zero;
     private Transform textParent = null;
     private GridObject[,] gridArray = null;
 
-    public GridXZ(Transform parent, int width, int height, float cellSize, Vector3 center, Func<GridXZ<GridObject>, int, int, GridObject> createGridObject)
+    public GridXZ(Transform parent, int width, int height, int cellSize, Vector3 center, Func<GridXZ<GridObject>, int, int, GridObject> createGridObject)
     {
         this.width = width;
         this.height = height;
@@ -63,16 +63,17 @@ public class GridXZ<GridObject>
         return textMesh;
     }
 
-    public float GetCellSize()
+    public int GetCellSize()
     {
         return cellSize;
     }
 
-    public GridObject GetGridObject(int x, int z)
+    public GridObject GetGridObject(Vector2Int position)
     {
-        if (x >= 0 && z >= 0 && x < width && z < height)
+        if (position.x >= 0 && position.y >= 0 && 
+            position.x < width && position.y < height)
         {
-            return gridArray[x, z];
+            return gridArray[position.x, position.y];
         }
         else
         {
@@ -80,15 +81,23 @@ public class GridXZ<GridObject>
         }
     }
 
-    public void GetIntPosition(Vector3 worldPosition, out int x, out int z)
+    public Vector2Int GetIntPosition(Vector3 worldPosition)
     {
-        x = Mathf.FloorToInt(worldPosition.x / cellSize);
-        z = Mathf.FloorToInt(worldPosition.z / cellSize);
+        var position = Vector2Int.zero;
+        position.x = Mathf.FloorToInt((worldPosition.x - center.x) / cellSize);
+        position.y = Mathf.FloorToInt((worldPosition.z - center.z) / cellSize);
+        return position;
     }
 
     public Vector3 GetWorldPosition(int x, int z)
     {
         return new Vector3(x, 0, z) * cellSize + center;
+    }
+
+    public Vector3 GetWorldPosition(Vector2Int position, Vector2Int rotation)
+    {
+        var intPosition = (position + rotation) * cellSize;
+        return new Vector3(intPosition.x, 0, intPosition.y) + center;
     }
 
     /* Activate OnGridObjectChange EventHandler -> text change */
